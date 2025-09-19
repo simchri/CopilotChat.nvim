@@ -412,8 +412,8 @@ If your employer provides access to Copilot via a Github Enterprise instance ("G
 {
   -- github instance main address w/o protocol prefix, default: "github.com" (without "https://"). E.g. a github-enterprise address might look like this: "mycorp.ghe.com"
   github_instance_url = 'mycorp.ghe.com',
-  -- github instance api address w/o protocol prefix, default: "api.github.com" (without "https://"). E.g.: "api.mycorp.ghe.com"
-  github_instance_api_url = 'api.mycorp.ghe.com',
+  -- github instance api address w/o protocol prefix, default: "api.github.com" (without "https://"). E.g.: "mycorp.ghe.com/api/v3"
+  github_instance_api_url = 'mycorp.ghe.com/api/v3',
 }
 ```
 

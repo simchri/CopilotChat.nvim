@@ -63,7 +63,7 @@ end
 ---@return string
 local function github_device_flow(tag, client_id, scope)
   local function request_device_code()
-    local res = utils.curl_post('https://' .. MC.config.github_instance_url .. '/login/device/code', {
+    local res, err = utils.curl_post('https://' .. MC.config.github_instance_url .. '/login/device/code', {
       body = {
         client_id = client_id,
         scope = scope,
@@ -71,7 +71,15 @@ local function github_device_flow(tag, client_id, scope)
       headers = { ['Accept'] = 'application/json' },
     })
 
-    local data = vim.json.decode(res.body)
+    if not res then
+      error('failed to request device code: ' .. (err or 'unknown error'))
+    end
+
+    local ok, data = pcall(vim.json.decode, res.body)
+    if not ok then
+      error('failed to decode device code response: ' .. tostring(res.body))
+    end
+
     return data
   end
 
@@ -79,7 +87,7 @@ local function github_device_flow(tag, client_id, scope)
     while true do
       plenary_utils.sleep(interval * 1000)
 
-      local res = utils.curl_post('https://' .. MC.config.github_instance_url .. '/login/oauth/access_token', {
+      local res, err = utils.curl_post('https://' .. MC.config.github_instance_url .. '/login/oauth/access_token', {
         body = {
           client_id = client_id,
           device_code = device_code,
@@ -87,11 +95,16 @@ local function github_device_flow(tag, client_id, scope)
         },
         headers = { ['Accept'] = 'application/json' },
       })
+
+      if not res then
+        error('failed polling for token: ' .. (err or 'unknown error'))
+      end
+
       local data = vim.json.decode(res.body)
       if data.access_token then
         return data.access_token
       elseif data.error ~= 'authorization_pending' then
-        error('Auth error: ' .. (data.error or 'unknown'))
+        error('auth error: ' .. (data.error or 'unknown'))
       end
     end
   end
@@ -137,7 +150,6 @@ local function get_github_copilot_token(tag)
     return token
   end
 
-  -- loading token from the environment only in GitHub Codespaces
   local codespaces = os.getenv('CODESPACES')
   token = os.getenv('GITHUB_TOKEN')
   if token and codespaces then
@@ -147,7 +159,6 @@ local function get_github_copilot_token(tag)
   -- loading token from the file
   local config_path = config_path()
   if config_path then
-    -- token can be sometimes in apps.json sometimes in hosts.json
     local file_paths = {
       config_path .. '/github-copilot/hosts.json',
       config_path .. '/github-copilot/apps.json',
@@ -168,7 +179,7 @@ local function get_github_copilot_token(tag)
     end
   end
 
-  return github_device_flow(tag, 'Iv1.b507a08c87ecfe98', '')
+  return github_device_flow(tag, '<your-enterprise-client-id>', '')
 end
 
 local function get_github_models_token(tag)
@@ -195,7 +206,7 @@ local function get_github_models_token(tag)
     end
   end
 
-  return github_device_flow(tag, '178c6fc778ccc68e1d6a', 'read:user copilot')
+  return github_device_flow(tag, '<your-enterprise-client-id>', 'read:user copilot')
 end
 
 ---@class CopilotChat.config.providers.Options
@@ -236,22 +247,17 @@ M.copilot = {
       },
     })
 
-    if err then
-      error(err)
+    if not response then
+      error('failed to fetch headers: ' .. (err or 'unknown error'))
     end
 
     if response.body and response.body.endpoints and response.body.endpoints.api then
       log.info('get_headers ok, authenticated. Use api endpoint: ' .. response.body.endpoints.api)
       M.endpoints_api = response.body.endpoints.api
     else
-      log.error(
-        'get_headers authenticated, but missing key "endpoints.api" in server response. response: '
-          .. utils.to_string(response)
-      )
-      error(
-        'get_headers authenticated, but missing key "endpoints.api" in server response. Check log for details: '
-          .. MC.config.log_path
-      )
+      log.error('get_headers authenticated, but missing key "endpoints.api" in server response. response: '
+        .. utils.to_string(response))
+      error('get_headers authenticated, but missing key "endpoints.api" in server response. check log for details')
     end
 
     return {
@@ -271,8 +277,8 @@ M.copilot = {
       },
     })
 
-    if err then
-      error(err)
+    if not response then
+      error('failed to get copilot info: ' .. (err or 'unknown error'))
     end
 
     local stats = response.body
@@ -283,12 +289,8 @@ M.copilot = {
     end
 
     local function usage_line(name, snap)
-      if not snap then
-        return
-      end
-
+      if not snap then return end
       table.insert(lines, string.format('  **%s**', name))
-
       if snap.unlimited then
         table.insert(lines, '    Usage: Unlimited')
       else
@@ -320,8 +322,8 @@ M.copilot = {
       headers = headers,
     })
 
-    if err then
-      error(err)
+    if not response then
+      error('failed to fetch models: ' .. (err or 'unknown error'))
     end
 
     local models = vim
@@ -438,8 +440,8 @@ M.copilot = {
 
     local choice
     if output.choices and #output.choices > 0 then
-      for _, choice in ipairs(output.choices) do
-        local message = choice.message or choice.delta
+      for _, choice_item in ipairs(output.choices) do
+        local message = choice_item.message or choice_item.delta
         if message and message.tool_calls then
           for i, tool_call in ipairs(message.tool_calls) do
             local fn = tool_call['function']
@@ -456,7 +458,6 @@ M.copilot = {
           end
         end
       end
-
       choice = output.choices[1]
     else
       choice = output
@@ -500,8 +501,8 @@ M.github_models = {
       headers = headers,
     })
 
-    if err then
-      error(err)
+    if not response then
+      error('failed to fetch github models: ' .. (err or 'unknown error'))
     end
 
     return vim
@@ -533,3 +534,4 @@ M.github_models = {
 }
 
 return M
+
